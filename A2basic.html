@@ -1,0 +1,487 @@
+<HTML>
+<HEAD>
+<title>Tank Friends</title>
+
+</HEAD>
+<BODY>
+<canvas id="myCanvas" width="1000" height="400"></canvas>
+<script type="text/javascript" href="seedrandom.js"></script>
+<script type = 'text/javascript'>
+
+var c=document.getElementById("myCanvas");
+var ctx=c.getContext("2d");
+
+
+
+var CANVAS_WIDTH = 1000;
+var CANVAS_HEIGHT = 400;
+var FPS = 60;
+var MOUNTAIN_WIDTH = 1000;
+var OCTAVES = 8;
+var mountainArray = [];
+var tempArray = [];
+var rotationAmt = 0;
+var power = 30;
+var ballXSpd;
+var ballYSpd;
+var cannonballs = [];
+var playerTankX;
+var playerTankY;
+var enemyTankX;
+var enemyTankY;
+var GRAVITY = .08;
+var shotCooldown = 0;
+var wind = 0;
+var toggleWind = true;
+var hitTank = false;
+var timeToChangeWind = 5000;
+var windResist = .09;
+var foundYou = false;
+
+
+
+function drawScene() 
+{
+    ctx.clearRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawPlayerBarrel(rotationAmt);
+    drawCannons();
+    ctx.beginPath();
+
+    // water
+    ctx.fillStyle = "#8ED6FF";
+    ctx.fillRect(200, 300, 600, 100);
+    ctx.fill();
+    
+    
+    // mountain
+    ctx.fillStyle = '#f00';
+    ctx.beginPath();
+    ctx.moveTo(0, 400-mountainArray[0]);
+
+    for (y=0; y<MOUNTAIN_WIDTH; y++)
+    {
+        ctx.lineTo(y, 400-80*(mountainArray[y]));
+    }
+    ctx.lineTo(MOUNTAIN_WIDTH, 400);
+    ctx.closePath();	
+    ctx.fill();
+    
+    // wind
+    if(toggleWind)
+    {
+        if(wind >= 50)
+        {
+            wind += Math.random()*-10;
+        }
+        else if(wind < -50)
+        {
+            wind += Math.random()*10;
+        }
+        else
+        {
+            wind += Math.random()*(Math.random()-.5)*10;
+        }
+        var windBar = ctx.createLinearGradient(450,0,550,0);
+        windBar.addColorStop(0,"#BF0202");
+        windBar.addColorStop(0.1,"#D5E052");
+        windBar.addColorStop(0.2,"#24BB24");
+        windBar.addColorStop(0.3,"#0C9117");    
+        windBar.addColorStop(0.4,"#003500");
+        windBar.addColorStop(0.5,"#0C9117");
+        windBar.addColorStop(0.7,"#24BB24");
+        windBar.addColorStop(0.9,"#D5E052");
+        windBar.addColorStop(1,"#BF0202");
+        ctx.fillStyle = windBar;
+        ctx.moveTo(500, 50);
+        ctx.fillRect(500,50,wind,20);
+    }
+    
+    
+    
+}
+function drawCannons()
+{
+    enemyTankX = 750;
+    enemyTankY = 400-80*mountainArray[750];
+    
+    // draw enemy tank barrel (never moves)
+    
+    /*ctx.beginPath();
+    ctx.moveTo(enemyTankX-2,enemyTankY+2);
+    ctx.lineTo(enemyTankX+2, enemyTankY-2);
+    ctx.lineTo(enemyTankX-20, enemyTankY-24);
+    ctx.lineTo(enemyTankX-24, enemyTankY-20);
+    ctx.fill();*/
+    
+
+    // draw first player tank
+    ctx.fillStyle = '#660198';
+    ctx.beginPath();
+    playerTankX = 250;
+    playerTankY = 400-80*mountainArray[250];
+    ctx.arc(playerTankX,playerTankY,15,0,Math.PI*2);  
+    ctx.fill();
+    // draw enemy tank
+    if(!hitTank)
+    {
+        // draw barrel
+        ctx.fillStyle = '#C1CDC1';
+        ctx.fillRect(enemyTankX - 30, enemyTankY - 2, 20, 4);
+        // draw tank
+        ctx.fillStyle = '#003300';
+        ctx.beginPath();
+        ctx.arc(enemyTankX,enemyTankY,15,0,Math.PI*2);  
+        ctx.fill();
+    }
+}
+
+function doKeyDown(evt)
+{
+    switch (evt.keyCode) 
+    {
+        case 38:  // up arrow
+        if(rotationAmt != -90)
+        {
+            rotationAmt -= 5;
+          //  draw();
+        }
+        break;
+        case 40:  // Down arrow
+        if(rotationAmt != 0)
+        {
+            rotationAmt += 5;
+          //  draw();
+        }
+        break;
+        case 37:  // Left arrow 
+        if(power != 15)
+        {
+            power -= 1;
+           // draw();
+        }
+        break;
+        case 39:  // right arrow
+        if(power != 45)
+        {
+            power += 1;
+           // draw();
+        }
+        break;
+        case 32: // Space bar was pressed 
+        if(shotCooldown == 0)
+        {
+            shootCannonball();
+            shotCooldown = 10;
+        }
+    }
+}
+
+function shootCannonball()
+{
+    var ballX = Math.cos(Math.PI*rotationAmt/180)*power + playerTankX;
+    var ballY = Math.sin(Math.PI*rotationAmt/180)*power + playerTankY;
+    var ball = 
+    {
+        ballGrav:GRAVITY,
+        active:true,
+        shotAtAngle: rotationAmt,
+        speed: power,
+        onMountain:false,
+        x: ballX,
+        y: ballY,
+        xVel: .1*((ballX-playerTankX)+Math.cos(Math.PI*rotationAmt/180)*power),
+        yVel: .1*((ballY-playerTankY)+Math.sin(Math.PI*rotationAmt/180)*power),
+        radius: 5,
+        color: "#000000",
+        inBounds: function() 
+        {
+            var lrtb = this.x >= 0 && this.x <= CANVAS_WIDTH && this.y <= CANVAS_HEIGHT;
+            var water = this.y >= 300 && this.x >= 200 && this.x <= 800;
+            return lrtb && !water;
+        },
+        draw: function() 
+        {
+            if(this.inBounds())
+            {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y,this.radius,0,Math.PI*2);  
+                
+                ctx.fill();
+            }
+        },
+        update: function() 
+        {  
+            // check ball on mountain
+            if(this.onMountain && this.inBounds())
+            {
+                leftX = Math.floor(this.x);
+                rightX = leftX + 1;
+                if(this.y > mountainArray[leftX])
+                {
+                    this.y = 400-80*mountainArray[leftX];
+                    var yDist = mountainArray[rightX] - mountainArray[leftX];
+                    var normal = Math.sqrt(yDist*yDist+1);
+                    this.xVel -= yDist/normal;
+                    this.yVel += (1/normal)*GRAVITY;   
+                }                   
+                else
+                {
+                    this.yVel += GRAVITY;
+                }
+                this.x += this.xVel;
+                this.y += this.yVel;
+            }
+            else if(this.inBounds())
+            {
+                var dir = Math.atan(this.yVel/this.xVel);
+                var xDir = Math.cos(dir)*this.radius;
+                var yDir = Math.sin(dir)*this.radius;
+                
+                if(this.yVel + this.y + yDir > 400-80*mountainArray[Math.floor(this.x+this.xVel+xDir)])
+                {   // check for mountain collision
+                    var slowdown = Math.ceil(this.xVel);
+                    for(var j = 0; j < slowdown; j++)
+                    {
+                        if((j/slowdown)*this.yVel + yDir + this.y > 400-80*mountainArray[Math.floor(this.x+xDir)+j])
+                        {
+                            this.x += (j/slowdown)*this.xVel;
+                            this.y += (j/slowdown)*this.yVel;
+                            this.xVel = 0;
+                            this.yVel = 0;
+                            break;
+                        }
+                    }
+                    this.xVel = 0;
+                    this.yVel = 0;
+                    this.ballGrav = 0; 
+                    this.onMountain = true;
+                }
+                else 
+                {     
+                    // check for circle collision (on other tank)
+                    if(!this.onMountain)
+                    {
+                        var xDist = this.x - enemyTankX;
+                        var yDist = this.y - enemyTankY;
+                        var totDist = xDist*xDist + yDist*yDist;
+                        if(totDist < 400)
+                        {
+                            hitTank = true;
+                        }
+                        // check for barrel collision
+                        // set up corners
+                        
+                        var topLeft = [enemyTankX -30, enemyTankY-2];
+                        var botLeft = [enemyTankX -30, enemyTankY+2];
+                        var topRight = [enemyTankX -10, enemyTankY-2];
+                        var botRight = [enemyTankX -10, enemyTankY+2];
+                        var center = [enemyTankX -20, enemyTankY];
+                        var xZone;
+                        var yZone;
+                        var zone;
+                        if(this.x < topLeft[0])
+                            xZone = 0;
+                        else if (this.x > topRight[0])
+                            xZone = 2;
+                        else
+                            xZone = 1;
+                        if(this.y < topLeft[1])
+                            yZone = 0;
+                        else if(this.y > botLeft[1])
+                            yZone = 2;
+                        else
+                            yZone = 1;
+                        zone = xZone + 3*yZone;
+                        // 0 1 2
+                        // 3 4 5
+                        // 6 7 8
+                        // zone is which of these the center of the cannonball is in
+                        // barrel is 4, so if center is in barrel, immediate hit
+                        
+                        switch(zone)
+                        {
+                        case 1:
+                        case 7:
+                            // check vertical distance from cannonball center to barrel center
+                            var dist = Math.abs(this.y - center[1]);
+                            if (dist < this.radius + 2)
+                            {
+                                hitTank = true;
+                            }
+                            break;
+                        case 3:
+                        case 5:
+                            var dist = Math.abs(this.x - center[0]);
+                            if (dist < this.radius + 10)
+                            {
+                                hitTank = true;
+                            }
+                            break;
+                        case 4:
+                            hitTank = true;
+                            break;
+                        }
+                    }
+                    // check ball on ball collision
+                    foundYou = false;
+                    if(cannonballs.length > 1 && this.inBounds())
+                    {   // there are other cannonballs
+                        for (var j = 0; j < cannonballs.length; j++)
+                        {
+                            if(cannonballs[j].x == this.x && cannonballs[j].y == this.y)
+                            {   // you're this ball, go to the next
+                                foundYou = true;
+                                if(j+1 == cannonballs.length)
+                                {
+                                    break;
+                                }
+                                else
+                                {
+                                    j++;
+                                }
+                            }
+                            if(foundYou)
+                            {
+                                var otherBall = cannonballs[j];
+                                if(otherBall.active)
+                                {
+                                    var xDist = this.x - otherBall.x;
+                                    var yDist = this.y - otherBall.y;
+                                    var dist = xDist*xDist + yDist*yDist;
+                                    if(dist != 0)
+                                    {
+                                        if(dist < 100)
+                                        {
+                                            // balls are touching
+                                            //get vector from ball 1 to ball 2
+                                            
+                                            // pretend they were exactly 100 apart as they should be
+                                            dist = 100;
+                                            xDist = Math.sqrt(dist - yDist*yDist);
+                                            var norm = Math.sqrt((xDist*xDist)+(yDist*yDist));
+                                            var vec = [xDist/norm, yDist/norm];
+                                            var dotProd = [2*(this.xVel)*vec[0]+this.xVel, 2*(this.yVel)*vec[1]+this.yVel];
+                                            this.xVel = dotProd[0];
+                                            this.yVel = dotProd[1];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if(this.ballGrav != 0)
+                    {   // hasn't hit anything
+                        this.yVel += this.ballGrav;
+                        this.x += this.xVel+.05*wind;
+                        if(this.xVel > 0)
+                            this.x -= windResist;
+                        else
+                            this.x += windResist;
+                        this.y += this.yVel;
+                        this.active = this.active && this.inBounds();
+                    }
+                }
+            }
+        }
+    };
+    cannonballs.push(ball);
+}
+setInterval(function()
+{
+    drawScene();
+    updateScene();
+
+    if(shotCooldown > 0)
+    {
+        shotCooldown--;
+    }
+}, 1000/FPS);
+
+function updateScene()
+{
+    for (var i = 0; i < cannonballs.length; i++)
+    {   
+        var tempBall = cannonballs[i];
+        if(tempBall.active)
+        {
+            tempBall.draw();
+            tempBall.update();
+        }
+    }        
+}
+
+function drawPlayerBarrel()
+{
+    // center point of tank is at 250, 400-80*mountainArray[250]
+    centerX = 250;
+    centerY = 400-80*mountainArray[250]-2;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(rotationAmt*(Math.PI/180));
+    ctx.fillStyle = '#C1CDC1';
+    ctx.fillRect(0, 0, power, 4);
+    ctx.restore();
+}
+
+function cosInterpolate(a, b, x)
+{
+    ft = x * Math.PI;
+    f = (1 - Math.cos(ft)) * .5;
+    return  a*(1-f) + b*f;
+}
+
+
+function perlinNoise()
+{
+    mountainArray[0] = 0;
+    mountainArray[200] = 3;
+    mountainArray[400] = 0
+    mountainArray[600] = 0;
+    mountainArray[800] = 3;
+    mountainArray[1000] = 0;
+    stepSize = 200;
+    for(xPos = 0; xPos < MOUNTAIN_WIDTH; xPos++)
+    {   // initialize mountain with default values
+        before = (Math.floor(xPos/stepSize))*stepSize;
+        after = before+stepSize;
+        fraction = xPos/stepSize - Math.floor(xPos/stepSize);
+        mountainArray[xPos] = cosInterpolate(mountainArray[before], mountainArray[after], fraction);
+    }
+    stepSize = 128;
+    for (curOctave = 0; curOctave < OCTAVES; curOctave++)
+    {
+        amp = 1/Math.pow(2, curOctave*1.2);
+        xPos = 0;
+        for (xPos = 0; xPos < MOUNTAIN_WIDTH; xPos += stepSize)
+        {   // calculate y values for each point in this freq
+            xVal = Math.random();
+            tempArray[xPos] = xVal*amp;
+        }
+        for(xPos = 0; xPos < MOUNTAIN_WIDTH; xPos++)
+        {   // calculate y values for all points by interpolating the step points
+            before = (Math.floor(xPos/stepSize))*stepSize;
+            after = before+stepSize;
+            if(after >= MOUNTAIN_WIDTH)
+            {
+                after = mountainArray[MOUNTAIN_WIDTH];
+            }
+            fraction = xPos/stepSize - Math.floor(xPos/stepSize);
+            tempArray[xPos] = cosInterpolate(tempArray[before], tempArray[after], fraction);
+        }
+        for(xPos = 0; xPos < MOUNTAIN_WIDTH; xPos++)
+        {   // merge this into the already completed octaves
+            mountainArray[xPos] += tempArray[xPos];
+        }
+        stepSize = stepSize/2;
+    }
+} 
+perlinNoise();
+window.addEventListener('keydown',doKeyDown,true);
+
+
+
+
+</script>
+</BODY>
+</html>
